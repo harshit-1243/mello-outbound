@@ -1,0 +1,28 @@
+# One-click backend deploy on Render (https://render.com → New → Blueprint → point at this repo).
+# The frontend dashboard deploys separately to Vercel (see README). After the service is up, set
+# the secret env vars below in the Render dashboard, then run the one-time DB setup (see README).
+services:
+  - type: web
+    name: mello-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements-core.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13"
+      # Secrets — set these in the Render dashboard (sync:false keeps them out of the repo):
+      - key: DATABASE_URL          # Supabase/Postgres URI (blank = ephemeral SQLite, resets on redeploy)
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      # Set to your deployed dashboard origin (the Vercel URL):
+      - key: CORS_ORIGINS
+        value: https://your-dashboard.vercel.app
+      # A strong API key is generated for you; put the same value in the dashboard's NEXT_PUBLIC_API_KEY.
+      - key: API_KEY
+        generateValue: true

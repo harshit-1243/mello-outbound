@@ -1,0 +1,11 @@
+[project]
+name = "mello-backend"
+version = "0.1.0"
+description = "mello.ai backend — booking engine + voice pipeline"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]

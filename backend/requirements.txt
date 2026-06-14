@@ -1,0 +1,17 @@
+# Full install: core + tests + the voice pipeline (Sarvam STT/TTS + Cerebras LLM).
+# Use this to run the voice agent (python -m app.voice.bot) and the test suite.
+# The deployed REST API / dashboard backend only needs requirements-core.txt (much smaller —
+# the voice deps below pull in torch/onnx for the Silero VAD).
+-r requirements-core.txt
+
+# Tests
+pytest>=8.3
+
+# Voice pipeline — Sarvam (STT + TTS) + Cerebras (LLM). silero = VAD turn-taking, webrtc = the
+# local browser test transport.
+pipecat-ai[cerebras,sarvam,silero,webrtc]>=1.3,<2
+pipecat-ai-prebuilt>=1.0.1
+
+# Optional alternative providers — only needed if you switch STT_PROVIDER / TTS_PROVIDER /
+# LLM_PROVIDER away from Sarvam/Cerebras:
+#   pip install "pipecat-ai[deepgram,elevenlabs,google,groq,anthropic]"

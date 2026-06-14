@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+*.db
+*.sqlite3
+
+# Env / secrets — NEVER commit real keys. Only *.example templates are tracked.
+.env
+.env.*
+!.env.example
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
+
+# Runtime data (may contain caller PII — keep out of git)
+call_logs/
+usage/
+*.log
+
+# Build / tooling caches
+.mypy_cache/
+build/
+
+# Internal / non-app material (sales decks, recordings, agent plans)
+business/
+.claude/
+*.mp4
+*.mov
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
