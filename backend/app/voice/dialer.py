@@ -18,9 +18,11 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
 from app.db.models import (
+    AMD_HUMAN,
+    AMD_VOICEMAIL,
     CONTACT_DONE,
     CONTACT_EXHAUSTED,
     CONTACT_IN_FLIGHT,
@@ -31,6 +33,7 @@ from app.db.models import (
     Campaign,
     OutboundContact,
 )
+from app.voice import amd
 from app.voice.compliance import (
     REASON_MAX_ATTEMPTS,
     REASON_NO_CONSENT,
@@ -103,11 +106,12 @@ def run_once(session, campaign: Campaign, provider: TelephonyProvider | None = N
     session.flush()
 
     result = provider.place_call(to=contact.phone, context=contact.context_json or {})
-    _record_attempt(session, campaign, contact, result)
-    _finalize_contact(contact, campaign, result)
+    disposition = _resolve_disposition(session, campaign, contact, result)
+    _record_attempt(session, campaign, contact, result, disposition)
+    _finalize_contact(contact, campaign, disposition)
     campaign.spent_inr = float(campaign.spent_inr or 0) + float(result.cost_inr)
     session.commit()
-    return DialerResult("dialed", contact.id, disposition=result.disposition)
+    return DialerResult("dialed", contact.id, disposition=disposition)
 
 
 def run_campaign(session, campaign: Campaign, provider: TelephonyProvider | None = None, max_calls: int = 1000) -> list[DialerResult]:
@@ -122,7 +126,23 @@ def run_campaign(session, campaign: Campaign, provider: TelephonyProvider | None
     return out
 
 
-def _record_attempt(session, campaign: Campaign, contact: OutboundContact, res: DialResult) -> None:
+def _resolve_disposition(session, campaign: Campaign, contact: OutboundContact, res: DialResult) -> str:
+    """Decide the real disposition. A machine NEVER yields a conversational outcome (AMD policy)."""
+    if not res.answered:
+        return res.disposition  # no_answer / busy / failed (a call-status, not AMD)
+    if res.amd_result == AMD_HUMAN:
+        return res.disposition  # the bot's outcome (provider stands in for the bot until Stage 5)
+    # Answered by a machine → ignore any conversational disposition; apply AMD policy.
+    vm_count = session.scalar(
+        select(func.count())
+        .select_from(CallAttempt)
+        .where(CallAttempt.contact_id == contact.id, CallAttempt.amd_result == AMD_VOICEMAIL)
+    ) or 0
+    vm_max = int((campaign.retry_policy or {}).get("voicemail_max", 1))
+    return amd.decide(res.amd_result, voicemail_count=vm_count, voicemail_max=vm_max).disposition
+
+
+def _record_attempt(session, campaign: Campaign, contact: OutboundContact, res: DialResult, disposition: str) -> None:
     session.add(
         CallAttempt(
             client_id=contact.client_id,
@@ -131,18 +151,18 @@ def _record_attempt(session, campaign: Campaign, contact: OutboundContact, res: 
             provider_call_sid=res.provider_call_sid,
             answered=res.answered,
             amd_result=res.amd_result,
-            disposition=res.disposition,
+            disposition=disposition,
             duration_s=res.duration_s,
             cost_inr=res.cost_inr,
         )
     )
 
 
-def _finalize_contact(contact: OutboundContact, campaign: Campaign, res: DialResult) -> None:
+def _finalize_contact(contact: OutboundContact, campaign: Campaign, disposition: str) -> None:
     contact.attempt_count += 1
-    contact.last_disposition = res.disposition
+    contact.last_disposition = disposition
     contact.leased_until = None
-    if res.disposition in TERMINAL_DISPOSITIONS:
+    if disposition in TERMINAL_DISPOSITIONS:
         contact.state = CONTACT_DONE
     elif contact.attempt_count >= campaign.max_attempts:
         contact.state = CONTACT_EXHAUSTED
