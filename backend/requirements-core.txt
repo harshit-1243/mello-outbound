@@ -8,6 +8,8 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 httpx>=0.27
 python-dotenv>=1.0
+phonenumbers>=8.13  # canonical phone normalization for outbound DNC/opt-out matching
+tzdata>=2024.1      # IANA tz database for zoneinfo (required on Windows; no-op on Linux/Mac)
 
 # Production database driver (Postgres / Supabase). Omit for SQLite-only local use.
 psycopg[binary]>=3.2

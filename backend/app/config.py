@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # Generate a strong key for production: python -c "import secrets; print(secrets.token_hex(32))"
     api_key: str = ""
 
+    # --- Outbound (Mello Outbound) compliance ---
+    # The dial gate is non-negotiable. dlt_registered MUST be True before any REAL dial happens
+    # (TRAI / TCCCPR — sending entity, headers, and templates registered on DLT).
+    outbound_dlt_registered: bool = False
+    outbound_daily_cap: int = 1  # max attempts per contact per local calendar day
+
     # LLM provider selection: "cerebras" (1M tok/day free, fastest), "google" (free Gemini),
     # "anthropic" (Claude), "groq"
     llm_provider: str = "google"
