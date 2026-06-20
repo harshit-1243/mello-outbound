@@ -30,6 +30,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     Numeric,
     String,
     Time,
@@ -350,3 +351,161 @@ class CallTurn(Base):
     ts: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now())
 
     call: Mapped[Call] = relationship(back_populates="turns")
+
+
+# ===========================================================================
+# OUTBOUND (Mello Outbound) — campaigns that PLACE calls toward one objective.
+# Inbound = react to a caller. Outbound = drive each call to a defined "done".
+# These tables are tenant-scoped (client_id) like the rest, and are created by
+# Base.metadata.create_all; RLS for them lives in migrations/002_outbound_rls.sql.
+# ===========================================================================
+
+# Campaign lifecycle.
+CAMPAIGN_DRAFT = "draft"
+CAMPAIGN_ACTIVE = "active"
+CAMPAIGN_PAUSED = "paused"
+CAMPAIGN_COMPLETED = "completed"
+CAMPAIGN_STOPPED = "stopped"
+
+# What a campaign drives each call toward (extensible — proves the objective abstraction).
+OBJECTIVE_BOOKING_CONFIRMATION = "booking_confirmation"
+OBJECTIVE_LEAD_QUALIFICATION = "lead_qualification"
+
+# Per-contact progress through a campaign.
+CONTACT_PENDING = "pending"        # eligible to be dialed
+CONTACT_IN_FLIGHT = "in_flight"    # a worker has claimed it / call is live (see leased_until)
+CONTACT_DONE = "done"              # reached a terminal disposition
+CONTACT_EXHAUSTED = "exhausted"    # hit max_attempts without success
+CONTACT_SKIPPED = "skipped"        # compliance gate permanently blocked it
+
+# Answering-machine detection result for one attempt.
+AMD_HUMAN = "human"
+AMD_VOICEMAIL = "voicemail"
+AMD_IVR = "ivr"
+AMD_UNKNOWN = "unknown"
+
+# Call dispositions. Terminal ones end the contact; the rest schedule a retry.
+DISPOSITION_CONFIRMED = "confirmed"
+DISPOSITION_REFUSED = "refused"
+DISPOSITION_RESCHEDULED = "rescheduled"
+DISPOSITION_OPT_OUT = "opt_out"
+DISPOSITION_WRONG_NUMBER = "wrong_number"
+DISPOSITION_CALLBACK_REQUESTED = "callback_requested"
+DISPOSITION_NO_ANSWER = "no_answer"
+DISPOSITION_BUSY = "busy"
+DISPOSITION_VOICEMAIL = "voicemail"
+DISPOSITION_FAILED = "failed"
+
+TERMINAL_DISPOSITIONS = {
+    DISPOSITION_CONFIRMED,
+    DISPOSITION_REFUSED,
+    DISPOSITION_RESCHEDULED,
+    DISPOSITION_OPT_OUT,
+    DISPOSITION_WRONG_NUMBER,
+    DISPOSITION_CALLBACK_REQUESTED,
+}
+
+
+class Campaign(Base):
+    """An outbound calling campaign: ONE objective, a contact list, and hard guardrails."""
+
+    __tablename__ = "campaigns"
+    __table_args__ = (Index("ix_campaign_client_status", "client_id", "status"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    objective_type: Mapped[str] = mapped_column(String(50), default=OBJECTIVE_BOOKING_CONFIRMATION)
+    # Free-form parameters the bot/prompt reads (offer text, reschedule rules, …). JSON on PG, TEXT on SQLite.
+    script_params: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Calling window in the contact's local clock — the compliance gate refuses dials outside it.
+    window_start: Mapped[dt.time] = mapped_column(Time, default=dt.time(10, 0))
+    window_end: Mapped[dt.time] = mapped_column(Time, default=dt.time(19, 0))
+    timezone: Mapped[str] = mapped_column(String(50), default="Asia/Kolkata")
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    # e.g. {"no_answer_hours": 4, "busy_minutes": 15, "voicemail_max": 1}
+    retry_policy: Mapped[dict] = mapped_column(JSON, default=dict)
+    concurrency: Mapped[int] = mapped_column(Integer, default=1)  # live calls at once (progressive only)
+    budget_cap_inr: Mapped[float] = mapped_column(Numeric(10, 2), default=0)  # 0 = no cap
+    spent_inr: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+    status: Mapped[str] = mapped_column(String(20), default=CAMPAIGN_DRAFT)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now())
+
+    contacts: Mapped[list["OutboundContact"]] = relationship(
+        back_populates="campaign", cascade="all, delete-orphan"
+    )
+
+
+class OutboundContact(Base):
+    """One person to call within a campaign, plus the context the objective needs."""
+
+    __tablename__ = "outbound_contacts"
+    __table_args__ = (
+        Index("ix_outcontact_campaign_state", "campaign_id", "state"),
+        Index("ix_outcontact_due", "state", "next_attempt_at"),
+        Index("ix_outcontact_phone", "client_id", "phone"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), nullable=False, index=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id"), nullable=False, index=True)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)  # normalized E.164 (+91…)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Objective payload, e.g. the booking to confirm: {"booking_id": 42, "when": "...", "amount": 800}
+    context_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Lawful basis to call (TCCCPR): existing_customer | opt_in_form | prior_consent | …
+    consent_basis: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    dnc: Mapped[bool] = mapped_column(Boolean, default=False)  # per-contact convenience flag (see OptOut for the permanent list)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Crash-safe progressive dialing: a worker claims a row by setting a short lease; if it dies,
+    # the lease expires and the contact becomes claimable again (no double-dial, no stranded rows).
+    leased_until: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    state: Mapped[str] = mapped_column(String(20), default=CONTACT_PENDING)
+    last_disposition: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now())
+
+    campaign: Mapped[Campaign] = relationship(back_populates="contacts")
+    attempts: Mapped[list["CallAttempt"]] = relationship(
+        back_populates="contact", cascade="all, delete-orphan"
+    )
+
+
+class CallAttempt(Base):
+    """A single dial of a contact: outcome, AMD, duration, ₹ cost, and a link to the transcript."""
+
+    __tablename__ = "call_attempts"
+    __table_args__ = (
+        Index("ix_attempt_campaign", "campaign_id", "placed_at"),
+        Index("ix_attempt_contact", "contact_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), nullable=False, index=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id"), nullable=False, index=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("outbound_contacts.id"), nullable=False, index=True)
+    # Links to the Call row the bot writes (its transcript lives in call_turns). NULL if never connected.
+    call_id: Mapped[int | None] = mapped_column(ForeignKey("calls.id"), nullable=True)
+    provider_call_sid: Mapped[str | None] = mapped_column(String(64), nullable=True)  # Twilio/Exotel call id
+    placed_at: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now())
+    answered: Mapped[bool] = mapped_column(Boolean, default=False)
+    amd_result: Mapped[str] = mapped_column(String(20), default=AMD_UNKNOWN)
+    disposition: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    duration_s: Mapped[int] = mapped_column(Integer, default=0)
+    cost_inr: Mapped[float] = mapped_column(Numeric(10, 2), default=0)
+
+    contact: Mapped[OutboundContact] = relationship(back_populates="attempts")
+
+
+class OptOut(Base):
+    """Permanent do-not-call record. Survives campaigns + contact deletes; the gate checks this FIRST."""
+
+    __tablename__ = "opt_outs"
+    __table_args__ = (UniqueConstraint("client_id", "phone", name="uq_optout_client_phone"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    client_id: Mapped[int] = mapped_column(ForeignKey("clients.id"), nullable=False, index=True)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)  # normalized E.164
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    source: Mapped[str] = mapped_column(String(30), default="call")  # call | manual | dnd_registry
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, server_default=func.now())
