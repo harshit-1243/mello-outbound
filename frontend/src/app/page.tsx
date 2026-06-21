@@ -13,7 +13,7 @@ import { Ctx } from "@/components/pages/types";
 import { C, FONT, MAIN_BG } from "@/lib/theme";
 import * as api from "@/lib/api";
 
-const POLL_MS = 6000;
+const POLL_MS = 3000; // snappy refresh so voice bookings appear ~live
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export default function Dashboard() {

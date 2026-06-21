@@ -6,7 +6,7 @@ import { Badge, EmptyState, Panel, PageHeader, StatCard } from "@/components/ui"
 import { Ctx } from "@/components/pages/types";
 import * as api from "@/lib/api";
 
-const POLL_MS = 6000;
+const POLL_MS = 3000;
 
 type BadgeKind = "booked" | "missed" | "handled" | "neutral" | "gold" | "active" | "expired";
 
