@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Sidebar, PageId } from "@/components/Sidebar";
 import { Overview } from "@/components/pages/Overview";
 import { LiveCalls } from "@/components/pages/LiveCalls";
+import { Outbound } from "@/components/pages/Outbound";
 import { Bookings } from "@/components/pages/Bookings";
 import { Members } from "@/components/pages/Members";
 import { Reports } from "@/components/pages/Reports";
@@ -104,6 +105,7 @@ export default function Dashboard() {
           <>
             {page === "overview" && <Overview ctx={ctx} />}
             {page === "liveCalls" && <LiveCalls ctx={ctx} />}
+            {page === "outbound" && <Outbound ctx={ctx} />}
             {page === "bookings" && <Bookings ctx={ctx} />}
             {page === "members" && <Members ctx={ctx} />}
             {page === "reports" && <Reports ctx={ctx} />}

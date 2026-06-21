@@ -113,6 +113,59 @@ export type CallSummary = {
 export type CallTurnInfo = { role: string; text: string; ts: string };
 export type CallDetail = CallSummary & { ended_at: string | null; turns: CallTurnInfo[] };
 
+// ---- outbound (Mello Outbound) ----
+
+export type CampaignSummary = {
+  id: number;
+  name: string;
+  objective_type: string;
+  status: string;
+  contacts_total: number;
+  calls_made: number;
+  answer_rate_pct: number;
+  booked: number;
+  spent_inr: number;
+  budget_cap_inr: number;
+};
+
+export type CampaignMetrics = {
+  campaign_id: number;
+  name: string;
+  objective_type: string;
+  status: string;
+  contacts_total: number;
+  contacts_pending: number;
+  contacts_done: number;
+  contacts_exhausted: number;
+  calls_made: number;
+  answered: number;
+  answer_rate_pct: number;
+  amd_human: number;
+  amd_voicemail: number;
+  amd_ivr: number;
+  amd_unknown: number;
+  qualified: number;
+  booked: number;
+  goal_completed: number;
+  goal_completion_rate_pct: number;
+  avg_handle_seconds: number;
+  total_cost_inr: number;
+  cost_per_success_inr: number | null;
+  opt_outs: number;
+  opt_out_rate_pct: number;
+  spent_inr: number;
+  budget_cap_inr: number;
+};
+
+export type OutboundContactRow = {
+  id: number;
+  name: string | null;
+  phone: string;
+  state: string;
+  last_disposition: string | null;
+  attempt_count: number;
+};
+
 export type UsageMeter = {
   key: string;
   label: string;
@@ -140,6 +193,10 @@ export const getOccupancy = (date: string) => getJSON<OccupancyGrid>(`/occupancy
 export const getStats = () => getJSON<DashboardStats>("/stats");
 export const listCalls = () => getJSON<CallSummary[]>("/calls");
 export const getCall = (callId: number) => getJSON<CallDetail>(`/calls/${callId}`);
+
+export const listCampaigns = () => getJSON<CampaignSummary[]>("/campaigns");
+export const getCampaignMetrics = (id: number) => getJSON<CampaignMetrics>(`/campaigns/${id}/metrics`);
+export const getCampaignContacts = (id: number) => getJSON<OutboundContactRow[]>(`/campaigns/${id}/contacts`);
 
 // Account-wide (not tenant-scoped) — credit/usage monitor.
 export async function getUsage(): Promise<Usage> {

@@ -5,11 +5,12 @@ import { C, FONT } from "@/lib/theme";
 import { Icon } from "@/components/ui";
 import { ClientInfo, initials } from "@/lib/api";
 
-export type PageId = "overview" | "liveCalls" | "bookings" | "members" | "reports" | "settings";
+export type PageId = "overview" | "liveCalls" | "outbound" | "bookings" | "members" | "reports" | "settings";
 
 const NAV: { id: PageId; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
   { id: "overview", label: "Overview", icon: "grid" },
   { id: "liveCalls", label: "Live Calls", icon: "phone" },
+  { id: "outbound", label: "Outbound", icon: "volume" },
   { id: "bookings", label: "Bookings", icon: "calendar" },
   { id: "members", label: "Members", icon: "users" },
   { id: "reports", label: "Reports", icon: "bar" },
