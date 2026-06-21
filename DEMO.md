@@ -42,12 +42,17 @@ cd backend
 .venv/Scripts/python -m uvicorn app.main:app --port 8000
 ```
 
-**Terminal 2 — the voice bot (your mic):**
+**Terminal 2 — the voice bot (your mic).** Pick ONE mode (same URL, default **http://localhost:7860**):
+
 ```bash
 cd backend
+# INBOUND — you call Mello (it greets, you ask to book):
 .venv/Scripts/python -m app.voice.bot
+
+# …or OUTBOUND — Mello calls YOU (it speaks first and drives the call):
+.venv/Scripts/python -m app.voice.outbound_bot
 ```
-It prints a URL (default **http://localhost:7860**). Open it, click **Connect**, allow the mic.
+Open the URL, click **Connect**, allow the mic. (Run only one of the two at a time — same port.)
 
 **Terminal 3 — the dashboard:**
 ```bash
@@ -68,6 +73,16 @@ Open **http://localhost:3000**.
    on Overview / Bookings, and the **call + transcript** shows under Calls.
 
 That's the full loop: **your voice → Mello → a real booking → live on the dashboard.**
+
+### Outbound mode (Mello calls you first)
+
+1. Run `python -m app.voice.outbound_bot` (Terminal 2), open the URL, click **Connect**.
+2. The moment you connect, **Mello speaks first** — e.g. *"Hi! This is Mello from Smash Arena. I
+   just wanted to confirm your tomorrow 4 PM booking — is that still good for you?"*
+3. Answer by voice: *"yes"* (confirm), *"can we move it to…"* (reschedule), or *"please stop
+   calling"* (opt-out). Mello drives to the goal and wraps up.
+4. On the **dashboard → Outbound tab**, that contact's pill flips (e.g. → **CONFIRMED**) and the
+   campaign metrics move within ~3 seconds.
 
 ---
 
