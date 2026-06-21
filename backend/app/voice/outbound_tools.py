@@ -115,3 +115,25 @@ def wrong_number(session, contact, campaign) -> ToolResult:
     """Reached the wrong person — apologize, mark so we never dial this number again."""
     _persist_optout(session, contact, "wrong_number")
     return ToolResult(True, "Oh, maaf kijiye — galti se call ho gaya. Aapka din achha rahe!", end_call=True, disposition=DISPOSITION_WRONG_NUMBER)
+
+
+# ---- generic affirmative / decline tools (used by the non-booking objectives) ----
+
+def mark_renewal(session, contact, campaign) -> ToolResult:
+    """Membership renewal: customer agrees to renew."""
+    return ToolResult(True, "Great — I'll send you the renewal link on WhatsApp. Thank you!", end_call=True, disposition=DISPOSITION_CONFIRMED)
+
+
+def log_interest(session, contact, campaign) -> ToolResult:
+    """Reactivation / lead-qualification / no-show / promo: customer is interested / wants to proceed."""
+    return ToolResult(True, "Perfect — I'll have our team set that up for you. Thank you!", end_call=True, disposition=DISPOSITION_CONFIRMED)
+
+
+def record_feedback(session, contact, campaign) -> ToolResult:
+    """Feedback objective: customer shared feedback."""
+    return ToolResult(True, "Thank you so much — your feedback really helps us!", end_call=True, disposition=DISPOSITION_CONFIRMED)
+
+
+def decline(session, contact, campaign) -> ToolResult:
+    """Customer isn't interested — close politely (no booking change)."""
+    return ToolResult(True, "No problem at all — thank you for your time. Have a great day!", end_call=True, disposition=DISPOSITION_REFUSED)

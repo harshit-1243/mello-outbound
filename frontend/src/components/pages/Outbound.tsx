@@ -124,7 +124,7 @@ export function Outbound({ ctx }: { ctx: Ctx }) {
                   color: on ? C.heading : C.muted, transition: "all .15s ease",
                 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 500 }}>{c.name}</div>
-                  <div style={{ fontSize: 11.5, color: C.muted3, marginTop: 3 }}>{c.status} · {c.contacts_total} contacts</div>
+                  <div style={{ fontSize: 11.5, color: C.muted3, marginTop: 3 }}>{c.objective_type.replace(/_/g, " ")} · {c.status} · {c.contacts_total} contacts</div>
                 </div>
               );
             })}

@@ -368,8 +368,14 @@ CAMPAIGN_COMPLETED = "completed"
 CAMPAIGN_STOPPED = "stopped"
 
 # What a campaign drives each call toward (extensible — proves the objective abstraction).
-OBJECTIVE_BOOKING_CONFIRMATION = "booking_confirmation"
-OBJECTIVE_LEAD_QUALIFICATION = "lead_qualification"
+# A menu across client sectors; each maps to an opening + tools + a conversation in app/voice.
+OBJECTIVE_BOOKING_CONFIRMATION = "booking_confirmation"   # appointments: salons, clinics, sports, spas, coaching
+OBJECTIVE_MEMBERSHIP_RENEWAL = "membership_renewal"       # gyms, sports clubs, salons with memberships
+OBJECTIVE_REACTIVATION = "reactivation"                   # win back lapsed customers: salons, gyms, clinics
+OBJECTIVE_LEAD_QUALIFICATION = "lead_qualification"       # qualify opted-in leads: any sector
+OBJECTIVE_NO_SHOW_FOLLOWUP = "no_show_followup"           # rebook missed appointments: clinics, salons, coaching
+OBJECTIVE_PROMO_OFFER = "promo_offer"                     # offer to opted-in customers: salons, gyms, retail, spas
+OBJECTIVE_FEEDBACK = "feedback"                           # post-visit feedback: any sector
 
 # Per-contact progress through a campaign.
 CONTACT_PENDING = "pending"        # eligible to be dialed

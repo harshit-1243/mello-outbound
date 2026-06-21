@@ -116,3 +116,59 @@ class BookingConfirmationConversation:
         if self.unknown >= 3:
             return T.log_callback(self.session, self.contact, self.campaign)
         return T.ToolResult(True, f"माफ़ कीजिए, समझ नहीं आया — क्या आपकी {self._service()} booking ठीक है?", end_call=False)
+
+
+class GenericObjectiveConversation:
+    """One conversation engine for every non-booking objective (renewal, reactivation, lead-qual,
+    no-show, promo, feedback). They share the same shape — open with purpose, then handle yes /
+    no / opt-out / busy / wrong-number / 'are you AI?'. The only thing that varies is the opening
+    (by objective_type) and the affirmative action (the tool a 'yes' triggers), passed in."""
+
+    def __init__(self, session, contact, campaign, business_name: str, objective_type: str, affirmative):
+        self.session = session
+        self.contact = contact
+        self.campaign = campaign
+        self.business = business_name
+        self.objective_type = objective_type
+        self.affirmative = affirmative  # callable(session, contact, campaign) -> ToolResult
+        self.ctx = contact.context_json or {}
+        self.turns = 0
+        self.empty = 0
+        self.unknown = 0
+
+    def opening(self) -> str:
+        return build_opening(self.objective_type, self.business, self.ctx)
+
+    def timeout_disposition(self) -> str:
+        return DISPOSITION_FAILED
+
+    def handle(self, text: str) -> T.ToolResult:
+        self.turns += 1
+        norm = _normalize(text or "")
+
+        if not norm.strip():
+            self.empty += 1
+            if self.empty >= 2:
+                return T.log_callback(self.session, self.contact, self.campaign)
+            return T.ToolResult(True, "Hello? Are you still there?", end_call=False)
+
+        if self.turns > MAX_TURNS:
+            return T.log_callback(self.session, self.contact, self.campaign)
+
+        if _has(norm, _OPTOUT):
+            return T.opt_out(self.session, self.contact, self.campaign)
+        if _has(norm, _WRONG):
+            return T.wrong_number(self.session, self.contact, self.campaign)
+        if _has(norm, _ROBOT):
+            return T.ToolResult(True, disclosure_line(self.business, self.ctx), end_call=False)
+        if _has(norm, _BUSY):
+            return T.log_callback(self.session, self.contact, self.campaign)
+        if _has(norm, _YES):
+            return self.affirmative(self.session, self.contact, self.campaign)
+        if _has(norm, _NO):
+            return T.decline(self.session, self.contact, self.campaign)
+
+        self.unknown += 1
+        if self.unknown >= 3:
+            return T.log_callback(self.session, self.contact, self.campaign)
+        return T.ToolResult(True, "Sorry, I didn't quite catch that — is that okay?", end_call=False)

@@ -196,6 +196,14 @@ def reschedule_booking(
 
 # ---- outbound (Mello Outbound) read endpoints — same dashboard, new section ----
 
+@app.get("/objectives")
+def list_objectives() -> list[dict]:
+    """The menu of outbound objectives (label + suited client sectors) for the campaign builder."""
+    from app.voice.objective import OBJECTIVES
+
+    return [{"key": k, **v} for k, v in OBJECTIVES.items()]
+
+
 @app.get("/clients/{client_id}/campaigns", response_model=list[CampaignSummary])
 def list_campaigns(client_id: int, db: Session = Depends(get_session)):
     return outbound_metrics.list_campaigns(db, client_id)
