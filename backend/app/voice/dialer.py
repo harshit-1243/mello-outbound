@@ -23,17 +23,16 @@ from sqlalchemy import func, or_, select
 from app.db.models import (
     AMD_HUMAN,
     AMD_VOICEMAIL,
-    CONTACT_DONE,
     CONTACT_EXHAUSTED,
     CONTACT_IN_FLIGHT,
     CONTACT_PENDING,
     CONTACT_SKIPPED,
-    TERMINAL_DISPOSITIONS,
+    DISPOSITION_VOICEMAIL,
     CallAttempt,
     Campaign,
     OutboundContact,
 )
-from app.voice import amd
+from app.voice import amd, dispositions, outbox
 from app.voice.compliance import (
     REASON_MAX_ATTEMPTS,
     REASON_NO_CONSENT,
@@ -108,7 +107,7 @@ def run_once(session, campaign: Campaign, provider: TelephonyProvider | None = N
     result = provider.place_call(to=contact.phone, context=contact.context_json or {})
     disposition = _resolve_disposition(session, campaign, contact, result)
     _record_attempt(session, campaign, contact, result, disposition)
-    _finalize_contact(contact, campaign, disposition)
+    _finalize_contact(session, campaign, contact, disposition, now)
     campaign.spent_inr = float(campaign.spent_inr or 0) + float(result.cost_inr)
     session.commit()
     return DialerResult("dialed", contact.id, disposition=disposition)
@@ -158,13 +157,28 @@ def _record_attempt(session, campaign: Campaign, contact: OutboundContact, res: 
     )
 
 
-def _finalize_contact(contact: OutboundContact, campaign: Campaign, disposition: str) -> None:
+def _finalize_contact(session, campaign: Campaign, contact: OutboundContact, disposition: str, now: dt.datetime) -> None:
+    """Apply the disposition: terminal -> done; retryable -> schedule next attempt or exhaust."""
     contact.attempt_count += 1
     contact.last_disposition = disposition
     contact.leased_until = None
-    if disposition in TERMINAL_DISPOSITIONS:
-        contact.state = CONTACT_DONE
-    elif contact.attempt_count >= campaign.max_attempts:
-        contact.state = CONTACT_EXHAUSTED
-    else:
-        contact.state = CONTACT_PENDING  # Stage 6 adds next_attempt_at backoff
+
+    vm_prior = session.scalar(
+        select(func.count())
+        .select_from(CallAttempt)
+        .where(CallAttempt.contact_id == contact.id, CallAttempt.amd_result == AMD_VOICEMAIL)
+    ) or 0
+    vm_count = vm_prior + (1 if disposition == DISPOSITION_VOICEMAIL else 0)
+
+    decision = dispositions.plan(
+        disposition,
+        attempt_count=contact.attempt_count,
+        max_attempts=campaign.max_attempts,
+        voicemail_count=vm_count,
+        retry_policy=campaign.retry_policy or {},
+        now=now,
+    )
+    contact.state = decision.state
+    contact.next_attempt_at = decision.next_attempt_at
+    if decision.fire_confirmation:
+        outbox.send_confirmation(session, contact, campaign)

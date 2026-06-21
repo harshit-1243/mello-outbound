@@ -112,10 +112,12 @@ def test_no_answer_retries_then_exhausts(session, world, monkeypatch):
     camp = _campaign(session, world.client_id, max_attempts=2, script_params={"daily_cap": 5})
     contact = _contact(session, world.client_id, camp)
     prov = SimulatedProvider(answered=False, amd_result=AMD_UNKNOWN, disposition=DISPOSITION_NO_ANSWER, cost_inr=0.5)
+    # Stage 6: a no-answer schedules a backoff, so the 2nd attempt is only due later.
+    later = INSIDE + dt.timedelta(hours=5)  # past the default 4h no-answer backoff, still inside window
 
     r1 = D.run_once(session, camp, prov, now=INSIDE)
-    r2 = D.run_once(session, camp, prov, now=INSIDE)
-    r3 = D.run_once(session, camp, prov, now=INSIDE)
+    r2 = D.run_once(session, camp, prov, now=later)
+    r3 = D.run_once(session, camp, prov, now=later)
 
     assert r1.status == "dialed" and r2.status == "dialed"
     assert r3.status == "no_eligible"
