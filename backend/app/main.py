@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -31,6 +31,9 @@ from app.booking.schemas import (
 from app.booking.service import BookingService
 from app.config import settings
 from app.db.base import get_session
+from app.db.models import Campaign
+from app.voice import metrics as outbound_metrics
+from app.voice.schemas import CampaignMetrics, CampaignSummary, OutboundContactRow
 
 app = FastAPI(title="mello.ai booking engine", version="0.1.0")
 
@@ -189,3 +192,28 @@ def reschedule_booking(
     client_id: int, booking_id: int, body: RescheduleRequest, db: Session = Depends(get_session)
 ):
     return BookingService(db, client_id).reschedule_booking(booking_id, body.date, body.time)
+
+
+# ---- outbound (Mello Outbound) read endpoints — same dashboard, new section ----
+
+@app.get("/clients/{client_id}/campaigns", response_model=list[CampaignSummary])
+def list_campaigns(client_id: int, db: Session = Depends(get_session)):
+    return outbound_metrics.list_campaigns(db, client_id)
+
+
+def _owned_campaign(db: Session, client_id: int, campaign_id: int) -> Campaign:
+    campaign = db.get(Campaign, campaign_id)
+    if campaign is None or campaign.client_id != client_id:
+        raise HTTPException(status_code=404, detail="campaign not found")
+    return campaign
+
+
+@app.get("/clients/{client_id}/campaigns/{campaign_id}/metrics", response_model=CampaignMetrics)
+def campaign_metrics(client_id: int, campaign_id: int, db: Session = Depends(get_session)):
+    return outbound_metrics.campaign_metrics(db, _owned_campaign(db, client_id, campaign_id))
+
+
+@app.get("/clients/{client_id}/campaigns/{campaign_id}/contacts", response_model=list[OutboundContactRow])
+def campaign_contacts(client_id: int, campaign_id: int, db: Session = Depends(get_session)):
+    _owned_campaign(db, client_id, campaign_id)  # tenant check
+    return outbound_metrics.campaign_contacts(db, campaign_id)
