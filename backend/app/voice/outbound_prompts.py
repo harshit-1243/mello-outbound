@@ -18,13 +18,13 @@ def build_opening(objective_type: str, business_name: str, context: dict | None 
     service = ctx.get("service", "booking")
     when = ctx.get("when", "")
     if objective_type == OBJECTIVE_BOOKING_CONFIRMATION:
-        when_part = f"{when} की " if when else ""
+        when_part = f"{when} " if when else ""
         return (
-            f"नमस्ते! मैं {business_name} की तरफ़ से Mello बोल रही हूँ। "
-            f"आपकी {when_part}{service} booking confirm करनी थी — क्या यह booking ठीक है?"
+            f"Hi! This is Mello calling from {business_name}. "
+            f"I just wanted to confirm your {when_part}{service} booking — is that still good for you?"
         )
     # Fallback generic opening.
-    return f"नमस्ते! मैं {business_name} की तरफ़ से Mello बोल रही हूँ — क्या मैं एक minute ले सकती हूँ?"
+    return f"Hi! This is Mello calling from {business_name} — do you have a quick minute?"
 
 
 def disclosure_line(business_name: str, context: dict | None = None) -> str:
@@ -32,8 +32,8 @@ def disclosure_line(business_name: str, context: dict | None = None) -> str:
     ctx = context or {}
     service = ctx.get("service", "booking")
     return (
-        f"हाँ, मैं {business_name} की एक automated assistant हूँ। "
-        f"आपकी {service} booking confirm करनी थी — क्या ठीक है?"
+        f"Yes, I'm an automated assistant from {business_name}. "
+        f"I'm just confirming your {service} booking — is that okay?"
     )
 
 

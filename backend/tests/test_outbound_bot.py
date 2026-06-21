@@ -53,9 +53,10 @@ def _make_booking(session, world, d=dt.date(2030, 7, 3), t=dt.time(18, 0)):
 
 # ---- opening ----
 def test_opening_identifies_business_and_does_not_announce_ai():
-    opening = P.build_opening(OBJECTIVE_BOOKING_CONFIRMATION, "Glow Salon", {"service": "Haircut", "when": "kal"})
+    opening = P.build_opening(OBJECTIVE_BOOKING_CONFIRMATION, "Glow Salon", {"service": "Haircut", "when": "tomorrow"})
     assert "Glow Salon" in opening
-    assert "क्या" in opening  # asks a yes/no consent question
+    assert opening.startswith("Hi")  # English-first opening
+    assert "?" in opening  # asks a yes/no consent question
     low = opening.lower()
     assert "automated" not in low and "robot" not in low and " ai " not in low  # no upfront AI disclosure
 
