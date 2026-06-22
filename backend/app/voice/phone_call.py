@@ -78,7 +78,7 @@ async def run_twilio_call(websocket) -> None:
             audio_in_enabled=True,
             audio_out_enabled=True,
             add_wav_header=False,
-            vad_analyzer=SileroVADAnalyzer(params=VADParams(start_secs=0.2, stop_secs=1.0)),
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(start_secs=0.2, stop_secs=0.6)),
             serializer=serializer,
         ),
     )
@@ -89,10 +89,9 @@ async def run_twilio_call(websocket) -> None:
 
     context = LLMContext(
         messages=[{"role": "system", "content": build_outbound_system_prompt(objective, business, today, ctx)}],
-        tools=build_outbound_tools_schema(),
+        tools=build_outbound_tools_schema(objective),
     )
     call_logger = CallLogger(client_id, phone)
-    register_outbound_tools(llm, contact_id, campaign_id, call_logger)
     aggregators = LLMContextAggregatorPair(context)
     user_agg = aggregators.user()
     assistant_agg = aggregators.assistant()
@@ -113,6 +112,13 @@ async def run_twilio_call(websocket) -> None:
 
     pipeline = Pipeline([transport.input(), stt, user_agg, llm, tts, transport.output(), assistant_agg])
     task = PipelineTask(pipeline, params=PipelineParams(enable_metrics=True))
+    # Register tools now that the task exists, so a terminal tool can speak its line and hang up.
+    register_outbound_tools(llm, contact_id, campaign_id, call_logger, task=task)
+
+    @llm.event_handler("on_completion_timeout")
+    async def _on_llm_timeout(_service):
+        # Cerebras free tier occasionally stalls — speak a short filler instead of dead air.
+        await task.queue_frames([TTSSpeakFrame("One moment.")])
 
     spoke = False
 

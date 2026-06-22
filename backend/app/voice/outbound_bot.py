@@ -89,11 +89,10 @@ async def bot(runner_args: RunnerArguments):
 
     context = LLMContext(
         messages=[{"role": "system", "content": build_outbound_system_prompt(objective_type, business_name, today, ctx)}],
-        tools=build_outbound_tools_schema(),
+        tools=build_outbound_tools_schema(objective_type),
     )
 
     call_logger = CallLogger(client_id, phone)
-    register_outbound_tools(llm, contact_id, campaign_id, call_logger)
     aggregators = LLMContextAggregatorPair(context)
     user_agg = aggregators.user()
     assistant_agg = aggregators.assistant()
@@ -115,6 +114,8 @@ async def bot(runner_args: RunnerArguments):
     pipeline = Pipeline([transport.input(), stt, user_agg, llm, tts, transport.output(), assistant_agg])
     observers = [obs for obs in [make_usage_observer()] if obs is not None]
     task = PipelineTask(pipeline, params=PipelineParams(enable_metrics=True), observers=observers)
+    # Register tools now that the task exists, so a terminal tool can speak its line and hang up.
+    register_outbound_tools(llm, contact_id, campaign_id, call_logger, task=task)
 
     @llm.event_handler("on_completion_timeout")
     async def _on_llm_timeout(_service):

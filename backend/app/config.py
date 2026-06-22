@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     # Database — SQLite by default; Postgres (Supabase) in production.
     database_url: str = "sqlite:///./mello_dev.db"
 
+    # Mirror live outbound outcomes into the shared Supabase project (same one the inbound agent +
+    # dashboard use), so a real call to a verified number shows on the dashboard. Best-effort: if
+    # these are blank the agent just runs SQLite-only. Writes go to the outbound_* tables via REST.
+    supabase_url: str = ""
+    supabase_service_key: str = ""
+    outbound_facility_id: str = "raheja-ileseum"
+
     # Comma-separated origins allowed to call the REST API from a browser. Add the deployed
     # dashboard's URL (e.g. https://mello-dashboard.vercel.app) in production .env.
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
@@ -76,16 +83,22 @@ class Settings(BaseSettings):
     # Requires SARVAM_API_KEY. "deepgram"/"elevenlabs" exist only as interim until the key lands.
     tts_provider: str = "sarvam"
 
-    # Sarvam — the chosen India-native STT + TTS stack (cost/quality balance).
+    # Sarvam — India-native STT + TTS (+ optional LLM via the OpenAI-compatible endpoint).
     sarvam_api_key: str = ""
+    # Sarvam LLM (set LLM_PROVIDER=sarvam): India-hosted, OpenAI-compatible chat with tool-calling.
+    sarvam_base_url: str = "https://api.sarvam.ai/v1"
+    sarvam_llm_model: str = "sarvam-105b"  # available: sarvam-30b (faster) | sarvam-105b (stronger)
     # STT: saarika:v2.5 is the streaming ASR that PRESERVES Hinglish. (Do not use saaras:* — those
     # translate speech to English, which would strip the Hindi the agent needs to reply in.)
     sarvam_stt_model: str = "saarika:v2.5"
     # TTS: bulbul:v2 is the "Standard" model — the balanced pick. bulbul:v3 is the pricier
     # "Advanced" tier; bulbul:v1 is older. Voice "anushka" is a female Hinglish speaker.
-    sarvam_tts_model: str = "bulbul:v2"
-    sarvam_voice_id: str = "anushka"
-    sarvam_language: str = "hi-IN"   # Hinglish: Hindi target with English code-mixing
+    sarvam_tts_model: str = "bulbul:v3"   # Advanced tier — clearer voice than v2
+    sarvam_voice_id: str = "ritu"         # v3-compatible female voice (anushka is v2-only)
+    sarvam_language: str = "hi-IN"   # TTS voice language (Hindi target with English code-mixing)
+    # STT language (Sarvam requires a specific code — no auto-detect). "en-IN" transcribes English
+    # correctly (the demo is English-first); switch to "hi-IN" if the caller mainly speaks Hindi.
+    sarvam_stt_language: str = "en-IN"
 
     # ElevenLabs (TTS)
     elevenlabs_api_key: str = ""

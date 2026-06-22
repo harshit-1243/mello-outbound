@@ -302,3 +302,13 @@ def test_call(client_id: int, body: TestCallRequest, db: Session = Depends(get_s
     if resp.status_code >= 300:
         raise HTTPException(status_code=502, detail=f"Twilio error {resp.status_code}: {resp.text[:300]}")
     return {"call_sid": resp.json().get("sid"), "to": to, "contact_id": contact.id, "campaign_id": campaign.id}
+
+
+# Warm the voice pipeline at startup (~15s once) so the Twilio media WebSocket (/ws/twilio) accepts
+# INSTANTLY. A cold import inside the WS handler blocks the handshake long enough that Twilio drops
+# the media stream and the call cuts off. Best-effort: the core API (no voice deps) still runs without it.
+try:  # pragma: no cover
+    import importlib
+    importlib.import_module("app.voice.phone_call")  # warm import (don't rebind the name `app`)
+except Exception:  # noqa: BLE001
+    pass

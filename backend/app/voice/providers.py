@@ -26,7 +26,7 @@ def make_stt():
         return SarvamSTTService(
             api_key=settings.sarvam_api_key,
             model=settings.sarvam_stt_model,  # saarika:v2.5 — ASR (NOT saaras, which translates)
-            params=SarvamSTTService.InputParams(language=settings.sarvam_language),
+            params=SarvamSTTService.InputParams(language=settings.sarvam_stt_language),
         )
 
     if provider == "deepgram":
@@ -67,6 +67,18 @@ def make_llm():
         from pipecat.services.groq.llm import GroqLLMService
 
         return GroqLLMService(api_key=settings.groq_api_key, model=settings.groq_model)
+    if provider == "sarvam":
+        if not settings.sarvam_api_key:
+            raise RuntimeError("LLM_PROVIDER=sarvam but SARVAM_API_KEY is empty. Add it to backend/.env.")
+        # Sarvam's chat API is OpenAI-compatible (incl. tool-calling) and India-hosted — lower
+        # round-trip than US providers for India calls. Use the generic OpenAI service + base_url.
+        from pipecat.services.openai.llm import OpenAILLMService
+
+        return OpenAILLMService(
+            api_key=settings.sarvam_api_key,
+            base_url=settings.sarvam_base_url,
+            model=settings.sarvam_llm_model,
+        )
     if provider == "cerebras":
         from pipecat.services.cerebras.llm import CerebrasLLMService
 
@@ -82,11 +94,11 @@ def make_llm():
         return CerebrasLLMService(
             api_key=settings.cerebras_api_key,
             settings=CerebrasLLMService.Settings(model=settings.cerebras_model, extra=extra),
-            retry_timeout_secs=8.0,
+            retry_timeout_secs=6.0,
             retry_on_timeout=True,
         )
     raise ValueError(
-        f"Unknown LLM_PROVIDER: {settings.llm_provider!r} (use cerebras|google|anthropic|groq)"
+        f"Unknown LLM_PROVIDER: {settings.llm_provider!r} (use sarvam|cerebras|google|anthropic|groq)"
     )
 
 
