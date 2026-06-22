@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     outbound_dlt_registered: bool = False
     outbound_daily_cap: int = 1  # max attempts per contact per local calendar day
 
+    # --- Twilio real test call (trial: call ONLY your verified number) ---
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""      # your Twilio (trial) number, E.164 e.g. +1XXXXXXXXXX
+    public_base_url: str = ""         # your public https tunnel (ngrok), e.g. https://ab12.ngrok-free.app
+    # HARD SAFETY: the /test-call endpoint may dial ONLY numbers in this list (your verified mobile).
+    outbound_test_numbers: str = ""   # comma-separated E.164, e.g. +9198XXXXXXXX
+
     # LLM provider selection: "cerebras" (1M tok/day free, fastest), "google" (free Gemini),
     # "anthropic" (Claude), "groq"
     llm_provider: str = "google"

@@ -86,6 +86,47 @@ That's the full loop: **your voice → Mello → a real booking → live on the 
 
 ---
 
+## Real call to YOUR phone (Twilio trial — calls only your verified number)
+
+No purchased number needed. A Twilio **trial** gives a free number and can call **verified** numbers.
+Mello is hard-locked to an **allowlist**, so it can *only* ever dial the number you list.
+
+**One-time (Twilio console):**
+1. Create a free trial account → note the **trial phone number**.
+2. **Verify your mobile**: Console → Phone Numbers → *Verified Caller IDs* → add your number (enter the OTP).
+3. Enable India: Console → Voice → *Geographic Permissions* → tick **India** (needed to call +91).
+
+**Fill `backend/.env`:**
+```
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+TWILIO_FROM_NUMBER=+1...        # your trial number
+OUTBOUND_TEST_NUMBERS=+9198...  # YOUR verified mobile (the only number Mello may call)
+PUBLIC_BASE_URL=                # filled in the next step
+```
+
+**Expose the server so Twilio can reach it** (Twilio can't see localhost):
+```bash
+ngrok http 8000        # copy the https URL it shows
+```
+Put that URL in `PUBLIC_BASE_URL` in `.env`, then (re)start the API:
+```bash
+cd backend && .venv/Scripts/python -m uvicorn app.main:app --port 8000
+```
+(You also need `python -m app.seed` + `python -m app.seed_outbound` once, and your Cerebras/Sarvam keys in `.env`.)
+
+**Make Mello call you:**
+```bash
+curl -X POST http://localhost:8000/clients/1/test-call \
+  -H "Content-Type: application/json" -d "{\"to\":\"+9198XXXXXXXX\"}"
+```
+Your phone rings → after Twilio's short "trial" message, **Mello speaks first** and you have the
+conversation. Confirm/reschedule/opt-out by voice, then watch the **dashboard → Outbound tab**
+update within a few seconds. (Any number not in `OUTBOUND_TEST_NUMBERS` is refused with 403.)
+
+> The phone call runs inside the API server (`/ws/twilio`) — you do **not** run `app.voice.outbound_bot`
+> for this; that one is the browser-mic version.
+
 ## Notes
 - Mic + audio work over **localhost** (a secure context); browsers need that for mic access.
 - Mello opens in **English** and switches to Hindi if you do.

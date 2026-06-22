@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+import httpx
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.booking import errors
@@ -31,8 +33,9 @@ from app.booking.schemas import (
 from app.booking.service import BookingService
 from app.config import settings
 from app.db.base import get_session
-from app.db.models import Campaign
+from app.db.models import CONTACT_PENDING, Campaign, OutboundContact
 from app.voice import metrics as outbound_metrics
+from app.voice.phone import normalize_phone
 from app.voice.schemas import CampaignMetrics, CampaignSummary, OutboundContactRow
 
 app = FastAPI(title="mello.ai booking engine", version="0.1.0")
@@ -225,3 +228,77 @@ def campaign_metrics(client_id: int, campaign_id: int, db: Session = Depends(get
 def campaign_contacts(client_id: int, campaign_id: int, db: Session = Depends(get_session)):
     _owned_campaign(db, client_id, campaign_id)  # tenant check
     return outbound_metrics.campaign_contacts(db, campaign_id)
+
+
+# ---- real Twilio test call (trial: dials ONLY an allowlisted, verified number) ----
+
+@app.api_route("/twiml/outbound", methods=["GET", "POST"])
+def twiml_outbound(contact_id: int | None = None, campaign_id: int | None = None):
+    """TwiML Twilio fetches when the call connects — opens a media stream to our bot WebSocket."""
+    host = settings.public_base_url.replace("https://", "").replace("http://", "").rstrip("/")
+    ws_url = f"wss://{host}/ws/twilio"
+    extra = ""
+    if contact_id:
+        extra += f'<Parameter name="contact_id" value="{contact_id}"/>'
+    if campaign_id:
+        extra += f'<Parameter name="campaign_id" value="{campaign_id}"/>'
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        f'<Response><Connect><Stream url="{ws_url}">{extra}</Stream></Connect></Response>'
+    )
+    return Response(content=xml, media_type="application/xml")
+
+
+@app.websocket("/ws/twilio")
+async def ws_twilio(websocket: WebSocket):
+    from app.voice.phone_call import run_twilio_call  # lazy: keeps voice deps out of the core API import
+
+    await run_twilio_call(websocket)
+
+
+class TestCallRequest(BaseModel):
+    to: str
+    campaign_id: int | None = None
+
+
+@app.post("/clients/{client_id}/test-call")
+def test_call(client_id: int, body: TestCallRequest, db: Session = Depends(get_session)):
+    """Place a REAL outbound call to a verified number — restricted to the allowlist (your own)."""
+    to = normalize_phone(body.to) or body.to
+    allow = {normalize_phone(n) or n.strip() for n in settings.outbound_test_numbers.split(",") if n.strip()}
+    if to not in allow:
+        raise HTTPException(status_code=403, detail="number not in outbound_test_numbers allowlist")
+    if not (settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_from_number and settings.public_base_url):
+        raise HTTPException(status_code=400, detail="Twilio not configured (set TWILIO_* + PUBLIC_BASE_URL in .env)")
+
+    campaign = (
+        _owned_campaign(db, client_id, body.campaign_id) if body.campaign_id
+        else db.scalars(select(Campaign).where(Campaign.client_id == client_id).order_by(Campaign.id)).first()
+    )
+    if campaign is None:
+        raise HTTPException(status_code=400, detail="No campaign — run `python -m app.seed_outbound` first.")
+
+    # A contact for this number so the bot has context and the disposition lands on the dashboard.
+    contact = db.scalars(
+        select(OutboundContact).where(OutboundContact.campaign_id == campaign.id, OutboundContact.phone == to)
+    ).first()
+    if contact is None:
+        contact = OutboundContact(
+            client_id=client_id, campaign_id=campaign.id, phone=to, name="Test call",
+            consent_basis="self_test", state=CONTACT_PENDING,
+            context_json={"service": "appointment", "when": "tomorrow"},
+        )
+        db.add(contact)
+        db.commit()
+
+    url = f"{settings.public_base_url.rstrip('/')}/twiml/outbound?contact_id={contact.id}&campaign_id={campaign.id}"
+    sid, token = settings.twilio_account_sid, settings.twilio_auth_token
+    resp = httpx.post(
+        f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Calls.json",
+        data={"To": to, "From": settings.twilio_from_number, "Url": url},
+        auth=(sid, token),
+        timeout=20,
+    )
+    if resp.status_code >= 300:
+        raise HTTPException(status_code=502, detail=f"Twilio error {resp.status_code}: {resp.text[:300]}")
+    return {"call_sid": resp.json().get("sid"), "to": to, "contact_id": contact.id, "campaign_id": campaign.id}
